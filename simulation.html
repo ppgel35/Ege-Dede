@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Gravitational Assist Simulation</title>
+<style>
+  :root {
+    --bg: #f7f8fa; --card: #ffffff; --text: #1c2230; --muted: #5b6578;
+    --border: #dde1e8; --accent: #2563eb; --accent-text: #ffffff;
+    --grid: rgba(0, 0, 0, 0.08); --error: #b42318;
+    --ship: #2563eb; --star: #d97706; --start: #16a34a; --energy: #9333ea;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #10141c; --card: #171c27; --text: #e6e9f0; --muted: #98a2b3;
+      --border: #2a3243; --accent: #4f8cff; --accent-text: #0b1020;
+      --grid: rgba(255, 255, 255, 0.09); --error: #ff8a80;
+      --ship: #5b9bff; --star: #fbbf24; --start: #4ade80; --energy: #c084fc;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 1000px; margin: 0 auto; padding: 0 16px; }
+  header.wrap { padding-top: 24px; padding-bottom: 8px; }
+  main.wrap { padding-bottom: 40px; }
+  h1 { margin: 0.3em 0 0.2em; font-size: 1.8rem; }
+  h2 { margin: 0 0 12px; font-size: 1.15rem; }
+  .lede { color: var(--muted); margin: 0 0 8px; max-width: 70ch; }
+  .back { color: var(--accent); text-decoration: none; font-size: 0.95rem; }
+  .back:hover { text-decoration: underline; }
+  .card {
+    background: var(--card); border: 1px solid var(--border);
+    border-radius: 12px; padding: 18px; margin: 16px 0;
+  }
+  fieldset {
+    border: 1px solid var(--border); border-radius: 8px;
+    margin: 0 0 14px; padding: 10px 14px 14px;
+  }
+  legend { padding: 0 6px; font-weight: 600; font-size: 0.9rem; color: var(--muted); }
+  .fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; }
+  label { display: flex; flex-direction: column; gap: 4px; font-size: 0.88rem; color: var(--muted); }
+  input[type=number] {
+    font: inherit; padding: 7px 9px; width: 100%;
+    border: 1px solid var(--border); border-radius: 6px;
+    background: var(--bg); color: var(--text);
+  }
+  input:focus-visible, button:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  .actions { display: flex; gap: 10px; flex-wrap: wrap; }
+  button {
+    font: inherit; padding: 9px 16px; border-radius: 8px;
+    border: 1px solid var(--border); background: var(--card);
+    color: var(--text); cursor: pointer;
+  }
+  button.primary {
+    background: var(--accent); border-color: var(--accent);
+    color: var(--accent-text); font-weight: 600;
+  }
+  .error { color: var(--error); margin: 12px 0 0; }
+  .stats { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 12px; margin: 0; }
+  .stats div { background: var(--bg); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; }
+  .stats dt { font-size: 0.78rem; color: var(--muted); }
+  .stats dd { margin: 2px 0 0; font-size: 1.05rem; font-weight: 600; font-variant-numeric: tabular-nums; }
+  .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 440px), 1fr)); gap: 16px; margin: 16px 0; }
+  .charts .card { margin: 0; }
+  .chart-box { position: relative; height: 320px; }
+  .chart-box.square { height: auto; aspect-ratio: 1 / 1; width: 100%; max-width: 520px; margin: 0 auto; }
+  table { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; margin-top: 14px; }
+  th, td { padding: 6px 10px; text-align: right; border-bottom: 1px solid var(--border); }
+  th { color: var(--muted); font-weight: 600; font-size: 0.85rem; }
+  .note { color: var(--muted); font-size: 0.9rem; margin: 0 0 14px; }
+  .table-scroll { overflow-x: auto; }
+</style>
+</head>
+<body>
+
+<header class="wrap">
+  <a class="back" href="index.html">&larr; Back to home</a>
+  <h1>Gravitational Assist Simulation</h1>
+  <p class="lede">
+    A spaceship flies past a fixed celestial object. Choose the starting position and velocity,
+    the object's position and strength, and the time settings, then press Run. The orbit is
+    integrated with the leapfrog method, and you get the trajectory, speed and energy-conservation graphs.
+    Units are dimensionless; the object's strength is the single parameter GM.
+  </p>
+</header>
+
+<main class="wrap">
+
+  <section class="card">
+    <h2>Inputs</h2>
+    <form id="sim-form" novalidate>
+      <fieldset>
+        <legend>Spaceship</legend>
+        <div class="fields">
+          <label>Start x <input type="number" id="x0" step="any"></label>
+          <label>Start y <input type="number" id="y0" step="any"></label>
+          <label>Velocity x <input type="number" id="vx0" step="any"></label>
+          <label>Velocity y <input type="number" id="vy0" step="any"></label>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Celestial object</legend>
+        <div class="fields">
+          <label>Position x <input type="number" id="xStar" step="any"></label>
+          <label>Position y <input type="number" id="yStar" step="any"></label>
+          <label>GM (strength) <input type="number" id="GM" step="any" min="0"></label>
+        </div>
+      </fieldset>
+      <fieldset>
+        <legend>Time</legend>
+        <div class="fields">
+          <label>End time <input type="number" id="tEnd" step="any" min="0"></label>
+          <label>Number of time steps <input type="number" id="nSteps" step="1" min="10"></label>
+        </div>
+      </fieldset>
+      <div class="actions">
+        <button type="submit" class="primary">Run simulation</button>
+        <button type="button" id="reset">Reset to defaults</button>
+      </div>
+      <p id="error" class="error" role="alert" hidden></p>
+    </form>
+  </section>
+
+  <section class="card">
+    <h2>Results</h2>
+    <dl id="stats" class="stats"></dl>
+  </section>
+
+  <section class="charts">
+    <div class="card">
+      <h2>Trajectory</h2>
+      <div class="chart-box square"><canvas id="traj"></canvas></div>
+    </div>
+    <div class="card">
+      <h2>Speed vs time</h2>
+      <div class="chart-box"><canvas id="speedChart"></canvas></div>
+    </div>
+    <div class="card">
+      <h2>Energy conservation</h2>
+      <div class="chart-box"><canvas id="energyChart"></canvas></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>Deflection angle vs impact parameter</h2>
+    <p class="note">
+      Each run starts at (object x &minus; start distance, object y + b) moving in the +x direction.
+      It uses the object position and GM from the inputs above. Because the object is fixed, the speed far
+      away is the same before and after, so only the direction changes.
+    </p>
+    <form id="sweep-form" novalidate>
+      <div class="fields">
+        <label>Start distance <input type="number" id="startDist" step="any" min="0"></label>
+        <label>Speed <input type="number" id="sweepSpeed" step="any" min="0"></label>
+        <label>b minimum <input type="number" id="bMin" step="any" min="0"></label>
+        <label>b maximum <input type="number" id="bMax" step="any" min="0"></label>
+        <label>Number of b values <input type="number" id="bCount" step="1" min="1"></label>
+      </div>
+      <div class="actions" style="margin-top:14px">
+        <button type="submit" class="primary">Run sweep</button>
+      </div>
+      <p id="sweep-error" class="error" role="alert" hidden></p>
+    </form>
+    <div class="chart-box" style="margin-top:16px"><canvas id="sweepChart"></canvas></div>
+    <div class="table-scroll">
+      <table>
+        <thead>
+          <tr><th>b</th><th>r_min</th><th>Deflection (deg)</th><th>Initial speed</th><th>Final speed</th></tr>
+        </thead>
+        <tbody id="sweepBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="equations.js"></script>
+<script>
+  const $ = id => document.getElementById(id);
+  const cssVar = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+
+  const MAX_STEPS = 500000;  // upper limit on time steps for the main run
+  const MAX_PLOT_POINTS = 2000;
+
+  const DEFAULTS = {
+    x0: -10, y0: 2, vx0: 1.2, vy0: 0,
+    xStar: 0, yStar: 0, GM: 2,
+    tEnd: 40, nSteps: 4000,
+    startDist: 10, sweepSpeed: 1.2, bMin: 1, bMax: 5, bCount: 5
+  };
+
+  function setInputs(values) {
+    for (const key in values) $(key).value = values[key];
+  }
+
+  function num(id, label) {
+    const v = parseFloat($(id).value);
+    if (!Number.isFinite(v)) throw new Error(label + ' must be a number.');
+    return v;
+  }
+
+  function showError(id, msg) { const el = $(id); el.textContent = msg; el.hidden = false; }
+  function clearError(id) { const el = $(id); el.textContent = ''; el.hidden = true; }
+
+  function readSim() {
+    const p = {
+      x0: num('x0', 'Spaceship start x'),
+      y0: num('y0', 'Spaceship start y'),
+      vx0: num('vx0', 'Spaceship velocity x'),
+      vy0: num('vy0', 'Spaceship velocity y'),
+      xStar: num('xStar', 'Object position x'),
+      yStar: num('yStar', 'Object position y'),
+      GM: num('GM', 'GM'),
+      tEnd: num('tEnd', 'End time'),
+      nSteps: num('nSteps', 'Number of time steps')
+    };
+    if (p.GM < 0) throw new Error('GM cannot be negative.');
+    if (p.tEnd <= 0) throw new Error('End time must be greater than 0.');
+    if (!Number.isInteger(p.nSteps) || p.nSteps < 10 || p.nSteps > MAX_STEPS) {
+      throw new Error('Number of time steps must be a whole number between 10 and ' + MAX_STEPS + '.');
+    }
+    if (p.x0 === p.xStar && p.y0 === p.yStar) {
+      throw new Error('The spaceship cannot start exactly on the celestial object.');
+    }
+    return p;
+  }
+
+  function readSweep() {
+    const q = {
+      xStar: num('xStar', 'Object position x'),
+      yStar: num('yStar', 'Object position y'),
+      GM: num('GM', 'GM'),
+      startDist: num('startDist', 'Start distance'),
+      speed: num('sweepSpeed', 'Speed'),
+      bMin: num('bMin', 'b minimum'),
+      bMax: num('bMax', 'b maximum'),
+      count: num('bCount', 'Number of b values')
+    };
+    if (q.GM < 0) throw new Error('GM cannot be negative.');
+    if (q.startDist <= 0) throw new Error('Start distance must be greater than 0.');
+    if (q.speed <= 0) throw new Error('Speed must be greater than 0.');
+    if (q.bMin <= 0) throw new Error('b minimum must be greater than 0.');
+    if (q.bMax < q.bMin) throw new Error('b maximum must be at least b minimum.');
+    if (!Number.isInteger(q.count) || q.count < 1 || q.count > 60) {
+      throw new Error('Number of b values must be a whole number between 1 and 60.');
+    }
+    return q;
+  }
+
+  // Keep roughly maxPts points so very long runs still draw quickly
+  function thin(xs, ys, maxPts) {
+    const n = xs.length;
+    const step = Math.max(1, Math.ceil(n / maxPts));
+    const out = [];
+    for (let i = 0; i < n; i += step) out.push({ x: xs[i], y: ys[i] });
+    if ((n - 1) % step !== 0) out.push({ x: xs[n - 1], y: ys[n - 1] });
+    return out;
+  }
+
+  const fmt = v => Number.isFinite(v) ? Number(v.toPrecision(6)).toString() : '\u2014';
+
+  /* ---------- charts ---------- */
+
+  let trajChart, speedChart, energyChart, sweepChart;
+
+  function baseOptions(xTitle, yTitle, showLegend) {
+    return {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      parsing: false,
+      interaction: { mode: 'nearest', intersect: false },
+      plugins: { legend: { display: !!showLegend } },
+      scales: {
+        x: { type: 'linear', title: { display: true, text: xTitle }, grid: { color: cssVar('--grid') } },
+        y: { type: 'linear', title: { display: true, text: yTitle }, grid: { color: cssVar('--grid') } }
+      }
+    };
+  }
+
+  function lineDataset(label, color) {
+    return {
+      label, data: [], borderColor: color, backgroundColor: color,
+      borderWidth: 2, pointRadius: 0, tension: 0
+    };
+  }
+
+  function createCharts() {
+    Chart.defaults.color = cssVar('--muted');
+    const ship = cssVar('--ship'), star = cssVar('--star'),
+          start = cssVar('--start'), energy = cssVar('--energy');
+
+    trajChart = new Chart($('traj'), {
+      type: 'scatter',
+      data: {
+        datasets: [
+          { label: 'Spaceship path', data: [], showLine: true, borderColor: ship, backgroundColor: ship,
+            borderWidth: 2, pointRadius: 0, order: 2 },
+          { label: 'Start', data: [], pointRadius: 6, borderColor: start, backgroundColor: start, order: 1 },
+          { label: 'Celestial object', data: [], pointRadius: 8, borderColor: star, backgroundColor: star, order: 1 }
+        ]
+      },
+      options: baseOptions('x', 'y', true)
+    });
+
+    speedChart = new Chart($('speedChart'), {
+      type: 'line',
+      data: { datasets: [lineDataset('Speed', ship)] },
+      options: baseOptions('t', '|v|', false)
+    });
+
+    const energyOptions = baseOptions('t', 'Relative energy error (E \u2212 E\u2080) / |E\u2080|', false);
+    energyOptions.scales.y.ticks = { callback: v => Number(v).toExponential(1) };
+    energyChart = new Chart($('energyChart'), {
+      type: 'line',
+      data: { datasets: [lineDataset('Relative energy error', energy)] },
+      options: energyOptions
+    });
+
+    const sweepOptions = baseOptions('Impact parameter b', 'Deflection angle (degrees)', false);
+    sweepChart = new Chart($('sweepChart'), {
+      type: 'line',
+      data: {
+        datasets: [{
+          label: 'Deflection angle', data: [], borderColor: star, backgroundColor: star,
+          borderWidth: 2, pointRadius: 4, tension: 0
+        }]
+      },
+      options: sweepOptions
+    });
+  }
+
+  /* ---------- rendering ---------- */
+
+  function renderStats(p, res) {
+    const last = p.nSteps;
+    const items = [
+      ['Initial speed', fmt(res.speed[0])],
+      ['Midpoint speed', fmt(res.speed[Math.floor(last / 2)])],
+      ['Final speed', fmt(res.speed[last])],
+      ['Final velocity (vx, vy)', fmt(res.final.vx) + ', ' + fmt(res.final.vy)],
+      ['Final energy error', res.energyErr[last].toExponential(3)],
+      ['Largest energy error', res.maxAbsErr.toExponential(3)],
+      ['Closest approach', fmt(res.rMin)],
+      ['Deflection angle', fmt(res.deflectionDeg) + '\u00B0']
+    ];
+    $('stats').innerHTML = items
+      .map(([label, value]) => '<div><dt>' + label + '</dt><dd>' + value + '</dd></div>')
+      .join('');
+  }
+
+  function renderCharts(p, res) {
+    // Trajectory: use a square range so the orbit is not stretched
+    let minX = p.xStar, maxX = p.xStar, minY = p.yStar, maxY = p.yStar;
+    for (let i = 0; i < res.x.length; i++) {
+      if (res.x[i] < minX) minX = res.x[i];
+      if (res.x[i] > maxX) maxX = res.x[i];
+      if (res.y[i] < minY) minY = res.y[i];
+      if (res.y[i] > maxY) maxY = res.y[i];
+    }
+    const half = Math.max(maxX - minX, maxY - minY, 1e-6) / 2 * 1.1;
+    const cx = (minX + maxX) / 2, cy = (minY + maxY) / 2;
+    trajChart.options.scales.x.min = cx - half;
+    trajChart.options.scales.x.max = cx + half;
+    trajChart.options.scales.y.min = cy - half;
+    trajChart.options.scales.y.max = cy + half;
+    trajChart.data.datasets[0].data = thin(res.x, res.y, MAX_PLOT_POINTS);
+    trajChart.data.datasets[1].data = [{ x: p.x0, y: p.y0 }];
+    trajChart.data.datasets[2].data = [{ x: p.xStar, y: p.yStar }];
+    trajChart.update();
+
+    speedChart.data.datasets[0].data = thin(res.t, res.speed, MAX_PLOT_POINTS);
+    speedChart.update();
+
+    energyChart.data.datasets[0].data = thin(res.t, res.energyErr, MAX_PLOT_POINTS);
+    energyChart.update();
+  }
+
+  function renderSweep(rows) {
+    sweepChart.data.datasets[0].data = rows.map(r => ({ x: r.b, y: r.thetaDeg }));
+    sweepChart.update();
+    $('sweepBody').innerHTML = rows.map(r =>
+      '<tr><td>' + fmt(r.b) + '</td><td>' + fmt(r.rMin) + '</td><td>' + fmt(r.thetaDeg) +
+      '</td><td>' + fmt(r.vInitial) + '</td><td>' + fmt(r.vFinal) + '</td></tr>'
+    ).join('');
+  }
+
+  /* ---------- actions ---------- */
+
+  function runSim() {
+    try {
+      clearError('error');
+      const p = readSim();
+      const res = runSimulation(p);
+      renderStats(p, res);
+      renderCharts(p, res);
+    } catch (err) {
+      showError('error', err.message);
+    }
+  }
+
+  function runSweep() {
+    try {
+      clearError('sweep-error');
+      renderSweep(sweepImpactParameter(readSweep()));
+    } catch (err) {
+      showError('sweep-error', err.message);
+    }
+  }
+
+  $('sim-form').addEventListener('submit', e => { e.preventDefault(); runSim(); });
+  $('sweep-form').addEventListener('submit', e => { e.preventDefault(); runSweep(); });
+  $('reset').addEventListener('click', () => {
+    setInputs(DEFAULTS);
+    runSim();
+    runSweep();
+  });
+
+  setInputs(DEFAULTS);
+  if (typeof Chart === 'undefined') {
+    showError('error', 'The charts library could not load. Check your internet connection and refresh the page.');
+  } else {
+    createCharts();
+    runSim();
+    runSweep();
+  }
+</script>
+</body>
+</html>
