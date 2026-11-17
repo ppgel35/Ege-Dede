@@ -155,7 +155,6 @@
     <form id="sweep-form" novalidate>
       <div class="fields">
         <label>Start distance <input type="number" id="startDist" step="any" min="0"></label>
-        <label>Speed <input type="number" id="sweepSpeed" step="any" min="0"></label>
         <label>b minimum <input type="number" id="bMin" step="any" min="0"></label>
         <label>b maximum <input type="number" id="bMax" step="any" min="0"></label>
         <label>Number of b values <input type="number" id="bCount" step="1" min="1"></label>
@@ -191,7 +190,7 @@
     x0: -10, y0: 2, vx0: 1.2, vy0: 0,
     xStar: 0, yStar: 0, GM: 2,
     tEnd: 40, nSteps: 4000,
-    startDist: 10, sweepSpeed: 1.2, bMin: 1, bMax: 5, bCount: 5
+    startDist: 10, bMin: 1, bMax: 5, bCount: 5
   };
 
   function setInputs(values) {
@@ -236,7 +235,7 @@
       yStar: num('yStar', 'Object position y'),
       GM: num('GM', 'GM'),
       startDist: num('startDist', 'Start distance'),
-      speed: num('sweepSpeed', 'Speed'),
+      speed: Math.hypot(num('vx0', 'Velocity x'), num('vy0', 'Velocity y')),
       bMin: num('bMin', 'b minimum'),
       bMax: num('bMax', 'b maximum'),
       count: num('bCount', 'Number of b values')
@@ -399,6 +398,7 @@
       const res = runSimulation(p);
       renderStats(p, res);
       renderCharts(p, res);
+      runSweep();  // sweep uses the same object position and GM
     } catch (err) {
       showError('error', err.message);
     }
